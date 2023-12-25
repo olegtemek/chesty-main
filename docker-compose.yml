@@ -1,0 +1,45 @@
+version: '3.5'
+services:
+  postgres:
+    container_name: postgres
+    image: postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - 5432:5432
+    volumes:
+      - ./.docker/db/:/var/lib/postgresql/data/
+    networks:
+      - app_network
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    volumes:
+      - ./.docker/pgadmin:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - app_network
+    restart: unless-stopped
+  # redis:
+  #   container_name: redis
+  #   image: redis
+  #   command: /bin/sh -c "redis-server --requirepass $$REDIS_PASS"
+  #   env_file:
+  #     - .env
+  #   ports:
+  #     - 6379:6379
+  #   volumes:
+  #     - ./.docker/redis/data:/data
+  #   networks:
+  #     - app_network
+
+networks:
+  app_network:
+    name: app_network
