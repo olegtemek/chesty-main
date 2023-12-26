@@ -29,6 +29,24 @@
       ],
       "@exceptions/exceptions/*": [
         "libs/exceptions/src/*"
+      ],
+      "@types/types": [
+        "libs/types/src"
+      ],
+      "@types/types/*": [
+        "libs/types/src/*"
+      ],
+      "@entyties/entities": [
+        "libs/entities/src"
+      ],
+      "@entyties/entities/*": [
+        "libs/entities/src/*"
+      ],
+      "@logger/logger": [
+        "libs/logger/src"
+      ],
+      "@logger/logger/*": [
+        "libs/logger/src/*"
       ]
     }
   }

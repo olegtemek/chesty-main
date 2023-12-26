@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 
 import { RoomModule } from './room/room.module';
 import { PrismaModule } from '@prisma/prisma';
-import { HubModule } from './hub/hub.module';
+
 import { ConfigModule } from '@nestjs/config';
 import { GameModule } from './game/game.module';
+import { UserModule } from './user/user.module';
+import { LoggerModule } from '@logger/logger';
 
 @Module({
   imports: [
@@ -12,8 +14,10 @@ import { GameModule } from './game/game.module';
       isGlobal: true,
     }),
     PrismaModule,
+    LoggerModule,
     RoomModule,
     GameModule,
+    UserModule,
   ],
   controllers: [],
   providers: [],

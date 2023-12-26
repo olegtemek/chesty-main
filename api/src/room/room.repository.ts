@@ -10,47 +10,53 @@ export class RoomRepository {
     return await this.prisma.room.create({ data });
   }
 
-  async removeAllByHost(host: string) {
+  async removeAllBy(where: Prisma.RoomWhereInput) {
     return await this.prisma.room.deleteMany({
-      where: {
-        host: host,
-      },
+      where,
     });
   }
 
-  async addEnemy(id: number, enemy: string): Promise<Room> {
+  async addEnemy(id: number, enemyId: number): Promise<Prisma.RoomWhereInput> {
     return await this.prisma.room.update({
       where: {
         id,
       },
       data: {
-        enemy,
+        users: {
+          connect: {
+            id: enemyId,
+          },
+        },
+        status: 'ACTIVE',
       },
     });
   }
 
-  async getOne(id: number): Promise<Room> {
-    return await this.prisma.room.findUnique({ where: { id } });
-  }
-
-  async getAll(): Promise<Room[]> {
-    return await this.prisma.room.findMany({});
-  }
-
-  async update(id: number, data: Prisma.RoomUpdateInput): Promise<Room> {
-    return await this.prisma.room.update({
-      where: {
-        id,
+  async getOne(where: Prisma.RoomWhereInput) {
+    return await this.prisma.room.findFirst({
+      where,
+      include: {
+        users: { select: { id: true, nickname: true } },
+        game: true,
       },
+    });
+  }
+
+  async getAll(where: Prisma.RoomWhereInput) {
+    return await this.prisma.room.findMany({ where, include: { users: true } });
+  }
+
+  async update(
+    where: Prisma.RoomWhereUniqueInput,
+    data: Prisma.RoomUpdateInput,
+  ) {
+    return await this.prisma.room.update({
+      where,
       data,
     });
   }
 
-  async remove(id: number): Promise<Room> {
+  async remove(id: number) {
     return await this.prisma.room.delete({ where: { id } });
-  }
-
-  async getByHost(host: string): Promise<Room> {
-    return await this.prisma.room.findFirst({ where: { host } });
   }
 }

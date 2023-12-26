@@ -1,87 +1,42 @@
-import {
-  BadGatewayException,
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { RoomRepository } from './room.repository';
-import { CreateRoomDto } from './dto/create-room.dto';
-import { Room } from '@prisma/client';
 import { WsException } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { Server } from 'socket.io';
+import { SocketWithAuth } from '@entyties/entities';
+import { LoggerService } from '@logger/logger';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class RoomService {
-  constructor(private readonly roomRepository: RoomRepository) {}
+  constructor(
+    private readonly roomRepository: RoomRepository,
+    private readonly logger: LoggerService,
+  ) {
+    this.logger.setContext('Room service');
+  }
   private server: Server;
 
   async setServer(server: Server) {
     this.server = server;
   }
 
-  async getAll() {
-    try {
-      const rooms = await this.roomRepository.getAll();
-      return rooms;
-    } catch (e) {
-      throw new BadGatewayException();
-    }
+  async getAll(where: Prisma.RoomWhereInput) {
+    return await this.roomRepository.getAll(where);
   }
 
-  async getOne(id: number) {
+  async getOne(where: Prisma.RoomWhereInput) {
     try {
-      const room = await this.roomRepository.getOne(id);
+      const room = await this.roomRepository.getOne(where);
       if (!room) throw new NotFoundException();
       return room;
     } catch (e) {
-      throw new NotFoundException();
-    }
-  }
-
-  async create(createRoomDto: CreateRoomDto): Promise<Room> {
-    try {
-      await this.removeAllByHost(createRoomDto.host);
-      const room = await this.roomRepository.create(createRoomDto);
-      return room;
-    } catch (e) {
-      throw new BadGatewayException();
-    }
-  }
-
-  async getByHost(host: string): Promise<Room> {
-    try {
-      const room = await this.roomRepository.getByHost(host);
-      return room;
-    } catch (e) {
-      throw new NotFoundException();
-    }
-  }
-
-  async removeAllByHost(host: string) {
-    try {
-      const rooms = await this.roomRepository.removeAllByHost(host);
-      return rooms;
-    } catch (e) {
-      throw new BadRequestException();
-    }
-  }
-
-  async addEnemy(roomId: number, enemy: string) {
-    try {
-      const getRoom = await this.roomRepository.getOne(roomId);
-      if (getRoom.enemy) {
-        throw new BadGatewayException();
-      }
-      const room = await this.roomRepository.addEnemy(roomId, enemy);
-      return room;
-    } catch (e) {
-      throw new BadRequestException();
+      throw e;
     }
   }
 
   async getRooms() {
     try {
-      const rooms = await this.getAll();
+      const rooms = await this.roomRepository.getAll({});
 
       this.server.emit('rooms', {
         data: {
@@ -89,55 +44,111 @@ export class RoomService {
         },
       });
     } catch (e) {
-      throw new WsException('error');
+      throw e;
     }
   }
 
-  async createRoom(client: Socket) {
+  async createRoom(client: SocketWithAuth) {
     try {
-      const room = await this.create({
-        host: client.handshake.headers.username as string,
-      } as CreateRoomDto);
+      await this.removeAllByUserId(client.user.id);
+
+      const room = await this.roomRepository.create({
+        hostId: client.user.id,
+        users: {
+          connect: {
+            id: client.user.id,
+          },
+        },
+        game: {
+          create: {},
+        },
+      });
       client.join(`${room.id}`);
 
-      client.send({
-        data: {
-          roomId: room.id,
-        },
-      });
-
       await this.getRooms();
     } catch (e) {
-      throw new WsException('error');
+      throw e;
     }
   }
 
-  async joinRoom(client: Socket, roomId: string) {
+  async joinRoom(client: SocketWithAuth, roomId: number) {
     try {
-      const room = await this.getOne(parseInt(roomId));
-
+      const room = await this.getOne({ id: roomId });
       if (!room) {
-        throw new WsException('error');
+        throw new WsException('Cannot find room');
       }
 
-      client.join(roomId);
+      client.join(`${room.id}`);
+      if (room.users.length == 2) {
+        throw new WsException('Room has enemy');
+      }
+      await this.roomRepository.addEnemy(room.id, client.user.id);
 
-      const addEnemy = await this.addEnemy(
-        parseInt(roomId),
-        client.handshake.headers.username as string,
-      );
-
-      this.server.to(roomId).emit('message', {
-        body: {
+      this.server.to(`${roomId}`).emit('message', {
+        data: {
           message: 'User connected',
-          enemy: addEnemy.enemy,
+          enemy: client.user.nickname,
         },
       });
       await this.getRooms();
     } catch (e) {
-      console.log(e);
+      throw e;
+    }
+  }
 
-      throw new WsException('error');
+  async handleConnection(client: SocketWithAuth) {
+    try {
+      this.logger.set(`User connected: ${client.user.email}`);
+      await this.removeAllByUserId(client.user.id);
+      await this.getRooms();
+    } catch (e) {
+      throw e;
+    }
+  }
+  async handleDisconnect(client: SocketWithAuth) {
+    try {
+      await this.removeAllByUserId(client.user.id);
+      await this.getRooms();
+    } catch (e) {
+      throw e;
+    }
+  }
+
+  async update(
+    where: Prisma.RoomWhereUniqueInput,
+    data: Prisma.RoomUpdateInput,
+  ) {
+    return await this.roomRepository.update(where, data);
+  }
+
+  private async removeAllByUserId(clientId: number) {
+    const rooms = await this.getAll({
+      users: { some: { id: clientId } },
+      status: 'FIND',
+    });
+
+    const roomsToDelete = rooms.filter((room) => room.hostId == clientId);
+
+    const roomsToUpdate = rooms.filter((room) => room.hostId != clientId);
+
+    if (roomsToDelete) {
+      await this.roomRepository.removeAllBy({
+        id: { in: roomsToDelete.map((item) => item.id) },
+      });
+    }
+    if (roomsToUpdate) {
+      for (const room of roomsToUpdate) {
+        await this.update(
+          {
+            id: room.id,
+          },
+          {
+            users: {
+              disconnect: { id: clientId },
+            },
+          },
+        );
+      }
     }
   }
 }

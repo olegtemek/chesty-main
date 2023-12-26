@@ -10,9 +10,52 @@ datasource db {
   url      = env("DATABASE_URI")
 }
 
+model AccessKey {
+  id     Int     @id @default(autoincrement())
+  key    String
+  status Boolean @default(true)
+  user   User?   @relation("Access")
+}
+
+model User {
+  id          Int       @id @default(autoincrement())
+  nickname    String
+  email       String    @unique
+  accessKey   AccessKey @relation("Access", fields: [accessKeyId], references: [id], onDelete: Cascade)
+  accessKeyId Int       @unique
+  password    String
+
+  rooms Room[] @relation("Rooms")
+}
+
 model Room {
-  id        Int      @id @default(autoincrement())
-  enemy     String?
-  host      String
-  createdAt DateTime @default(now())
+  id        Int         @id @default(autoincrement())
+  createdAt DateTime    @default(now())
+  status    ROOM_STATUS @default(FIND)
+  hostId    Int
+  users     User[]      @relation("Rooms")
+
+  game Game? @relation("Game")
+}
+
+model Game {
+  roomId Int @id
+
+  status    GAME_STATUS @default(ACTIVE)
+  data      Json?
+  createdAt DateTime    @default(now())
+
+  room Room @relation("Game", fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+enum ROOM_STATUS {
+  FIND
+  ACTIVE
+  FINISH
+  DELETED
+}
+
+enum GAME_STATUS {
+  ACTIVE
+  FINISH
 }
